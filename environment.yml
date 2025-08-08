@@ -1,4 +1,4 @@
-name: car-behavioral-cloning
+name: test
 channels:
     - https://conda.anaconda.org/menpo
     - conda-forge
