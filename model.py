@@ -14,9 +14,9 @@ os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=0'
 
 DATA_PATH = "/Users/thaiscontreras/Documents/autopilot_project/self-drive-car-udacity/data"
 CSV_FILE = 'driving_log.csv'
-BATCH_SIZE = 32
-EPOCHS = 14
-CORRECTION = 0.2
+BATCH_SIZE = 16
+EPOCHS = 30
+CORRECTION = 0.3
 
 def load_data(data_path, csv_file):
     """
@@ -128,6 +128,8 @@ def main():
         verbose=1
     )
 
+    earlyStopping = tf.keras.callbacks.EarlyStopping(monitor='loss',patience=5,mode='min')
+
     try:
         model.fit(
             train_generator,
@@ -135,7 +137,7 @@ def main():
             validation_data=validation_generator,
             validation_steps=len(validation_samples) // BATCH_SIZE,
             epochs=EPOCHS,
-            callbacks=[checkpoint],
+            callbacks=[checkpoint,earlyStopping],
             verbose=1
         )
     except Exception as e:
