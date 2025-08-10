@@ -15,8 +15,8 @@ os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=0'
 DATA_PATH = "/Users/thaiscontreras/Documents/autopilot_project/self-drive-car-udacity/data"
 CSV_FILE = 'driving_log.csv'
 BATCH_SIZE = 32
-EPOCHS = 7
-CORRECTION = 0.2 
+EPOCHS = 14
+CORRECTION = 0.2
 
 def load_data(data_path, csv_file):
     """
@@ -70,10 +70,9 @@ def generator(samples, batch_size, data_path):
 
 def create_model():
     """
-    Create NVIDIA-style CNN model for behavioral cloning.
+    Create NVIDIA-style CNN model.
     """
     model = tf.keras.models.Sequential([
-
         tf.keras.layers.Lambda(lambda x: (x / 255.0) - 0.5, input_shape=utils.INPUT_SHAPE),
         tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='relu'),
         tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='relu'),
@@ -94,7 +93,7 @@ def create_model():
     return model
 
 def main():
-    parser = argparse.ArgumentParser(description='Behavioral Cloning Model Training')
+    parser = argparse.ArgumentParser(description='Training')
     parser.add_argument(
         '--data_path',
         type=str,
@@ -121,9 +120,8 @@ def main():
     model = create_model()
     model.summary()
 
-    checkpoint_path = "model-{epoch:03d}.keras"
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
-        checkpoint_path,
+        "model-{epoch:03d}.keras",
         monitor='val_loss',
         save_best_only=True,
         mode='min',

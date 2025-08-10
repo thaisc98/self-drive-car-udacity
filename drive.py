@@ -84,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument(
         'model',
         type=str,
-        help='Path to model h5 file. Model should be on the same path.'
+        help='Path to model keras file. Model should be on the same path.'
     )
     parser.add_argument(
         'image_folder',

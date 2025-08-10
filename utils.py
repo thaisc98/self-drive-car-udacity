@@ -27,14 +27,14 @@ def load_image(data_dir, image_file):
 
 def crop(image):
     """
-    Crop the image (removing the sky at the top and the car front at the bottom).
+    Crop the image removing the sky at the top and the car front at the bottom.
     """
     if image.shape[0] < 85:  # Ensure image is tall enough for cropping
         print(f"Warning: Image height {image.shape[0]} too small for cropping")
         return image
-    print(f"Before crop shape: {image.shape}")  # Debug
+   # print(f"Before crop shape: {image.shape}")  # Debug
     cropped = image[60:-25, :, :]
-    print(f"After crop shape: {cropped.shape}")  # Debug
+   # print(f"After crop shape: {cropped.shape}")  # Debug
     if cropped.size == 0:
         raise ValueError("Cropped image is empty")
     return cropped
@@ -43,20 +43,20 @@ def resize(image):
     """
     Resize the image to the input shape used by the network model.
     """
-    print(f"Before resize shape: {image.shape}")  # Debug
+   ## print(f"Before resize shape: {image.shape}")  # Debug
     if image.size == 0:
         raise ValueError("Input image to resize is empty")
     resized = cv2.resize(image, (IMAGE_WIDTH, IMAGE_HEIGHT), interpolation=cv2.INTER_AREA)
-    print(f"After resize shape: {resized.shape}")  # Debug
+   ## print(f"After resize shape: {resized.shape}")
     return resized
 
 def rgb2yuv(image):
     """
     Convert the image from RGB to YUV (This is what the NVIDIA model does).
     """
-    print(f"Before RGB2YUV shape: {image.shape}")  # Debug
+   ## print(f"Before RGB2YUV shape: {image.shape}")  # Debug
     yuv = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
-    print(f"After RGB2YUV shape: {yuv.shape}")  # Debug
+   ## print(f"After RGB2YUV shape: {yuv.shape}")  # Debug
     return yuv
 
 def preprocess(image):
@@ -137,7 +137,13 @@ def random_brightness(image):
     hsv[:, :, 2] = hsv[:, :, 2] * ratio
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
 
-
+def augment(data_dir, center, left, right, steering_angle, range_x=100, range_y=10):
+    image, steering_angle = choose_image(data_dir, center, left, right, steering_angle)
+    image, steering_angle = random_flip(image, steering_angle)
+    image, steering_angle = random_translate(image, steering_angle, range_x, range_y)
+    image = random_shadow(image)
+    image = random_brightness(image)
+    return image, steering_angle
 
 def batch_generator(data_dir, image_paths, steering_angles, batch_size, is_training):
     """
