@@ -1,19 +1,19 @@
-import os
 import argparse
 import base64
 from datetime import datetime
+import os
 import shutil
-import numpy as np
-import socketio
-import eventlet
-import eventlet.wsgi
-from PIL import Image
-from flask import Flask
-from io import BytesIO
-import tensorflow as tf
-import utils
 
-# Environment settings for TensorFlow
+import numpy as np
+import eventlet
+import eventlet.websocket
+from PIL import Image
+from io import BytesIO
+from tensorflow.keras.models import load_model
+import utils
+import json
+
+# For Mac M4
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['DNNL_DEFAULT_FPMATH_MODE'] = 'STRICT'
 os.environ['DNNL_VERBOSE'] = '1'
@@ -23,86 +23,61 @@ os.environ['KMP_AFFINITY'] = 'disabled'
 os.environ['TF_XLA_FLAGS'] = ''
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-# Initialize SocketIO server with explicit async mode
-sio = socketio.Server(logger=True, engineio_logger=True, async_mode='eventlet')
-app = Flask(__name__)
-app = socketio.WSGIApp(sio, app)
-
-# Global variables
 model = None
 prev_image_array = None
 MAX_SPEED = 25
 MIN_SPEED = 10
 speed_limit = MAX_SPEED
+args = None
 
-@sio.on('connect', namespace='/')
-def connect(sid, environ):
-    """Handle client connection."""
-    print(f"Connected to simulator {sid}, environ: {environ}")
-    send_control(0, 0, sid)
+def process_telemetry(data):
+    steering_angle = float(data["steering_angle"])
+    throttle = float(data["throttle"])
+    speed = float(data["speed"])
+    image = Image.open(BytesIO(base64.b64decode(data["image"])))
+    if args and args.image_folder != '':
+        timestamp = datetime.utcnow().strftime('%Y_%m_%d_%H_%M_%S_%f')[:-3]
+        image_filename = os.path.join(args.image_folder, timestamp)
+        image.save('{}.jpg'.format(image_filename))
+    image = np.asarray(image)
+    image = utils.preprocess(image)
+    image = np.array([image])
+    steering_angle = float(model.predict(image, batch_size=1))
+    global speed_limit
+    if speed > speed_limit:
+        speed_limit = MIN_SPEED
+    else:
+        speed_limit = MAX_SPEED
+    throttle = 1.0 - steering_angle**2 - (speed/speed_limit)**2
+    print('{} {} {}'.format(steering_angle, throttle, speed))
+    return steering_angle, throttle
 
-@sio.on('telemetry', namespace='/')
-def telemetry(sid, data):
-    """Handle telemetry data from the simulator."""
-    if sid is None:
-        print("Error: Received telemetry with sid=None, skipping")
-        return
-    if not data:
-        print(f"No telemetry data received from {sid}")
-        sio.emit('manual', data={}, to=sid, namespace='/')
-        return
-
-    print(f"Received telemetry from {sid}: {data.keys()}")
-    try:
-        # Extract telemetry data
-        steering_angle = float(data["steering_angle"])
-        throttle = float(data["throttle"])
-        speed = float(data["speed"])
-        image = Image.open(BytesIO(base64.b64decode(data["image"])))
-        print(f"Received image size: {image.size}, mode: {image.mode}")
-
-        # Save frame if image folder is specified
-        if args.image_folder:
-            timestamp = datetime.utcnow().strftime('%Y_%m_%d_%H_%M_%S_%f')[:-3]
-            image_filename = os.path.join(args.image_folder, timestamp)
-            image.save(f'{image_filename}.jpg')
-
-        # Preprocess image
-        image = np.asarray(image)
-        print(f"Image shape before preprocess: {image.shape}")
-        image = utils.preprocess(image)
-        print(f"Image shape after preprocess: {image.shape}, min: {image.min()}, max: {image.max()}")
-        image = np.array([image])
-
-        # Predict steering angle
-        steering_angle = float(model.predict(image, verbose=0)[0])
-        print(f"Predicted steering angle: {steering_angle}")
-
-        # Adjust throttle based on speed
-        global speed_limit
-        if speed > speed_limit:
-            speed_limit = MIN_SPEED
+@eventlet.websocket.WebSocketWSGI
+def handle(ws):
+    sid = "simulator_sid"
+    ws.send('0{"sid":"%s","upgrades":[],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}' % sid)
+    while True:
+        msg = ws.wait()
+        if msg is None:
+            break
+        if msg == '2':
+            ws.send('3')
+        elif msg == '40':
+            ws.send('40')
+            # Send initial control
+            data = json.dumps(["steer", {'steering_angle': '0', 'throttle': '0'}])
+            ws.send('42' + data)
+        elif msg.startswith('42'):
+            json_str = msg[2:]
+            event_data = json.loads(json_str)
+            event = event_data[0]
+            data = event_data[1] if len(event_data) > 1 else {}
+            if event == "telemetry":
+                steering_angle, throttle = process_telemetry(data)
+                data = json.dumps(["steer", {'steering_angle': str(steering_angle), 'throttle': str(throttle)}])
+                ws.send('42' + data)
         else:
-            speed_limit = MAX_SPEED
-        throttle = max(0.0, min(1.0, 1.0 - steering_angle**2 - (speed/speed_limit)**2))
-        print(f"Steering: {steering_angle:.4f}, Throttle: {throttle:.4f}, Speed: {speed:.4f}")
-
-        send_control(steering_angle, throttle, sid)
-    except Exception as e:
-        print(f"Error during telemetry processing: {e}")
-        raise
-
-def send_control(steering_angle, throttle, sid):
-    """Send steering and throttle commands to the simulator."""
-    if sid is None:
-        print("Error: Cannot send control, sid is None")
-        return
-    data = {
-        'steering_angle': str(steering_angle),
-        'throttle': str(throttle)
-    }
-    print(f"Sending steer event to {sid}: {data}")
-    sio.emit('steer', data=data, to=sid, namespace='/')
+            print("Unknown message:", msg)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Remote Driving')
@@ -120,16 +95,10 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    print(f"Loading model from {args.model}")
-    try:
-        model = tf.keras.models.load_model(args.model, compile=False)
-        print("Model loaded successfully")
-    except Exception as e:
-        print(f"Failed to load model: {e}")
-        raise
+    model = load_model(args.model)
 
-    if args.image_folder:
-        print(f"Creating image folder at {args.image_folder}")
+    if args.image_folder != '':
+        print("Creating image folder at {}".format(args.image_folder))
         if not os.path.exists(args.image_folder):
             os.makedirs(args.image_folder)
         else:
@@ -139,5 +108,7 @@ if __name__ == '__main__':
     else:
         print("NOT RECORDING THIS RUN ...")
 
-    print("Starting WSGI server...")
-    eventlet.wsgi.server(eventlet.listen(('', 4567)), app)
+    # Start WebSocket server
+    listener = eventlet.listen(('', 4567))
+    print("Starting WebSocket server...")
+    eventlet.wsgi.server(listener, handle)

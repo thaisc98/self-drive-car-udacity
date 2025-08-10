@@ -1,9 +1,10 @@
 import os
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disables oneDNN optimizations
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'   # Reduce logs
-os.environ['KMP_AFFINITY'] = 'disabled'    # Helps in some cases
-os.environ['TF_XLA_FLAGS'] = ''            # Disable XLA
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force CPU-only if GPU causes issues
+# M4 avoid problems
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0' 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
+os.environ['KMP_AFFINITY'] = 'disabled'
+os.environ['TF_XLA_FLAGS'] = ''
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import cv2
 import numpy as np
 import matplotlib.image as mpimg

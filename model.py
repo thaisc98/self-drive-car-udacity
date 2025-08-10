@@ -9,15 +9,14 @@ from tensorflow.keras.optimizers import Adam
 import utils
 import argparse
 
-# Disable XLA to avoid x2APIC errors
+# Disable XLA to avoid x2APIC errors MAC M4
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=0'
 
-# Constants
 DATA_PATH = "/Users/thaiscontreras/Documents/autopilot_project/self-drive-car-udacity/data"
 CSV_FILE = 'driving_log.csv'
 BATCH_SIZE = 32
 EPOCHS = 7
-CORRECTION = 0.2  # Steering correction for left/right images
+CORRECTION = 0.2 
 
 def load_data(data_path, csv_file):
     """
@@ -27,15 +26,13 @@ def load_data(data_path, csv_file):
     csv_path = os.path.join(data_path, csv_file)
     with open(csv_path) as csvfile:
         reader = csv.reader(csvfile)
-        header = next(reader)  # Skip header
+        header = next(reader)
         for line in reader:
-            # Adjust based on your CSV structure
             center_path, left_path, right_path, steering = line[0], line[1], line[2], float(line[3])
             samples.append((center_path, steering))
             samples.append((left_path, steering + CORRECTION))
             samples.append((right_path, steering - CORRECTION))
     
-    # Shuffle and split data
     train_samples, validation_samples = sklearn.model_selection.train_test_split(samples, test_size=0.2, random_state=42)
     return train_samples, validation_samples
 
@@ -61,11 +58,9 @@ def generator(samples, batch_size, data_path):
                     print(f"Warning: Failed to load image at {full_path}")
                     continue
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                # Preprocess image
                 image = utils.preprocess(image)
                 images.append(image)
                 angles.append(angle)
-                # Augment with flipped image
                 images.append(cv2.flip(image, 1))
                 angles.append(-angle)
             
@@ -78,7 +73,7 @@ def create_model():
     Create NVIDIA-style CNN model for behavioral cloning.
     """
     model = tf.keras.models.Sequential([
-        # Normalize pixel values to [-0.5, 0.5]
+
         tf.keras.layers.Lambda(lambda x: (x / 255.0) - 0.5, input_shape=utils.INPUT_SHAPE),
         tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='relu'),
         tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='relu'),
@@ -91,10 +86,9 @@ def create_model():
         tf.keras.layers.Dense(50, activation='relu'),
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(10, activation='relu'),
-        tf.keras.layers.Dense(1)  # Output steering angle
+        tf.keras.layers.Dense(1) 
     ])
     
-    # Use modern Keras optimizer
     optimizer = Adam(learning_rate=0.001)
     model.compile(loss='mse', optimizer=optimizer)
     return model
@@ -116,21 +110,17 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    # Load data
     print(f"Loading data from {os.path.join(args.data_path, args.csv_file)}")
     train_samples, validation_samples = load_data(args.data_path, args.csv_file)
     print(f"Number of training samples: {len(train_samples)}")
     print(f"Number of validation samples: {len(validation_samples)}")
 
-    # Create generators
     train_generator = generator(train_samples, BATCH_SIZE, args.data_path)
     validation_generator = generator(validation_samples, BATCH_SIZE, args.data_path)
 
-    # Create model
     model = create_model()
     model.summary()
 
-    # Train model with checkpointing
     checkpoint_path = "model-{epoch:03d}.keras"
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         checkpoint_path,
